@@ -10,3 +10,6 @@ playwright-report/
 
 # A local SQLite runtime (never publish student records)
 .local/
+
+# ZCode Sites deployment stage
+.zcode-site/

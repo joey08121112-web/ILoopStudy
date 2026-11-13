@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "types": ["node"],
+    "outDir": ".zcode-site/stage/dist-server",
+    "rootDir": "."
+  },
+  "include": [],
+  "files": ["server/index.ts"]
+}
