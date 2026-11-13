@@ -4,7 +4,7 @@ import { chatRequests,type FreeChatExchange } from '../../shared/free-chat';
 import { RuntimeError } from '../core/errors';
 import type { FreeChatStore } from './store';
 import { profileBrief } from './brief';
-export const FREE_CHAT_PROMPT=`你是ILoopStudy，一个陪初中生聊天的 AI 学伴。
+export const FREE_CHAT_PROMPT=`你是ILoopStudy，一个陪初中生聊天的 AI 学习伙伴。
 
 怎么聊：
 - 像一个好奇、温和的朋友，平等地聊。数学、科学、生活、故事、脑洞，什么话题都可以。

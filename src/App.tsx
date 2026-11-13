@@ -598,7 +598,7 @@ function App() {
               也会到达。
             </h1>
             <p>
-              我是ILoopStudy，一个 AI 学伴。
+              我是ILoopStudy，一个 AI 学习伙伴。
               <br />
               陪你看懂一道题，也陪你找回自己的节奏。
             </p>
@@ -785,7 +785,7 @@ function App() {
                     {headerTitles[s.page]}
                     <small>
                       {s.page === "home"
-                        ? "你的 AI 学伴"
+                        ? "你的 AI 学习伙伴"
                         : "按自己的节奏，向前一点点"}
                     </small>
                   </div>
@@ -2621,7 +2621,7 @@ function App() {
                 <>
                   <Mascot small />
                   <span className="eyebrow">很高兴，认识你</span>
-                  <h2>我是ILoopStudy，一个 AI 学伴。</h2>
+                  <h2>我是ILoopStudy，一个 AI 学习伙伴。</h2>
                   <p>
                     陪你做日常数学学习，不评判智力或人格，不诊断心理疾病，不承诺治疗或保证提高成绩。
                   </p>
