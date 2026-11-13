@@ -1,0 +1,97 @@
+/* 所有者：ChatGPT。首页、首次记忆选择与小结；不改旧离线首页。 */
+.home-chat { min-width: 0; }
+.home-chat .pet-hero .mascot { width: min(320px, 92%); }
+.home-chat .pet-hero-bubble { font-size: 16px; max-height: none; }
+.home-card { margin: 16px 0; padding: 18px; border: 1px solid #d9dfcd; border-radius: 20px; background: #fffdf5; overflow-wrap: anywhere; }
+.home-card h2 { font-size: 1.15rem; line-height: 1.5; margin: 5px 0 10px; }
+.home-card h3 { font-size: 1rem; margin: 20px 0 8px; }
+.home-card p { line-height: 1.7; }
+.home-card-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.home-card-actions button { min-height: 44px; flex: 1 1 130px; white-space: normal; }
+.home-quick { gap: 8px; }
+.home-quick button { text-align: left; line-height: 1.5; min-height: 44px; max-width: 100%; }
+.home-slots { display: grid; gap: 12px; min-width: 0; }
+.home-slots > * { min-width: 0; max-width: 100%; }
+.home-mode-actions { border: 0; padding: 0; margin: 0; min-width: 0; }
+.home-chat .messages { max-height: 38dvh; overflow-y: auto; overscroll-behavior: contain; }
+.home-composer-wrap { position: relative; z-index: 11; padding: 10px 0; background: var(--paper, #f8f7ef); border-top: 1px solid #d9dfcd; }
+.home-chat .learning-composer { margin: 0 0 8px; display: flex; gap: 10px; align-items: end; }
+.home-chat .learning-composer .field { flex: 1; margin: 0; min-width: 0; }
+.home-chat textarea { min-height: 80px; max-height: 160px; font-size: 16px; scroll-margin-bottom: 130px; }
+.home-chat .learning-composer .primary { min-width: 70px; min-height: 44px; }
+/* Focus keeps the composer in the visible viewport; the phone keyboard needs device acceptance. */
+.home-composer-wrap:focus-within, .keyboard-open .home-composer-wrap { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+.app-shell:has(.home-composer-wrap:focus-within) .bottom-nav { visibility: hidden; pointer-events: none; }
+.home-memory-choice { margin: 16px 0; padding: 14px; border: 1px solid #d9dfcd; border-radius: 18px; }
+.home-memory-choice label { display: flex; gap: 12px; align-items: center; padding: 14px 8px; min-height: 56px; line-height: 1.6; }
+.home-memory-choice input { width: 20px; height: 20px; flex-shrink: 0; accent-color: #486744; }
+.home-memory-choice label:has(:checked) { background: #e8eedf; border-radius: 10px; }
+.summary-observation, .summary-progress { border-left: 3px solid #99af82; padding-left: 12px; margin: 12px 0; }
+.summary-observation blockquote { margin: 8px 0; color: #4c5e44; }
+.summary-plan { padding: 10px 0 16px; border-bottom: 1px solid #e3e6d8; }
+.home-chat button, .home-memory-choice label { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.home-chat button { user-select: none; -webkit-user-select: none; }
+.home-chat button:active:not(:disabled) { filter: brightness(.94); }
+.home-chat button:focus-visible, .home-memory-choice input:focus-visible { outline: 3px solid #667d4f; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .home-chat *, .home-chat *::after { scroll-behavior: auto !important; } }
+/* H2: scoped to the three ChatGPT professional components. Existing page shells stay owned by Claude. */
+.professional { margin: 20px 0 28px; padding: 20px; min-width: 0; border: 1px solid #d9dfcd; border-radius: 22px; background: #fffdf5; overflow-wrap: anywhere; }
+.professional h2 { margin: 8px 0; font-size: 1.45rem; line-height: 1.5; font-family: var(--serif); }
+.professional h3 { font-size: 1.08rem; margin: 18px 0 10px; }
+.professional h4 { font-size: .95rem; margin-bottom: 4px; }
+.professional button { min-height: 44px; white-space: normal; touch-action: manipulation; }
+.professional :is(textarea,select) { width: 100%; min-width: 0; font-size: 16px; }
+.professional :is(button,textarea,select,summary):focus-visible { outline: 3px solid #667d4f; outline-offset: 3px; }
+.professional-map { margin: 18px -8px 14px; width: calc(100% + 16px); min-height: 440px; }
+.professional-map .map-node[data-state="waiting"] .node-icon { filter: grayscale(.9) opacity(.55); box-shadow: none; }
+.professional-map .map-node[data-state="waiting"] strong { color: #7d866f; }
+.professional-map .map-node[data-state="current"] .node-icon { outline: 3px solid #3e624c; outline-offset: 3px; animation: professional-glow 2.4s ease-in-out infinite; }
+.professional-map .map-node[data-state="current"] small { background: #3e624c; color: #fff; font-weight: 600; }
+.professional-map .map-node[data-state="done"] small { background: #dce9cc; color: #354e28; }
+@keyframes professional-glow { 50% { box-shadow: 0 0 0 9px #dce9cc99; } }
+@media (prefers-reduced-motion: reduce) { .professional-map .map-node[data-state="current"] .node-icon { animation: none; } }
+.professional-place { margin: 0 0 16px; padding: 14px 16px; border: 1px solid #d9dfcd; border-radius: 18px; background: #f7f8ef; scroll-margin-block: 90px; }
+.professional-place-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.professional-place-head strong { font-size: 1.05rem; }
+.professional-place-row { border-top: 1px solid var(--line); padding: 10px 0 4px; margin-top: 10px; }
+.professional-place-row h4 { margin: 0 0 4px; }
+.professional-place-row p { margin: 0 0 8px; }
+.professional-place-row > button { width: 100%; }
+.professional-convo-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.professional-intro { padding: 4px 0 12px; }
+.professional-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; border-block: 1px solid var(--line); padding: 12px 0; margin: 16px 0; }
+.professional-bubble { padding: 16px; border-radius: 16px 16px 16px 3px; background: #edf1e3; white-space: pre-wrap; }
+.professional-bubble.student { background: #f6efe0; border-radius: 16px 16px 3px 16px; }
+.professional-task { white-space: pre-wrap; font-size: 16px; }
+.professional-history { margin: 16px 0; }
+.professional-history[open] { max-height: 36dvh; overflow-y: auto; overscroll-behavior: contain; }
+.professional-choices { display: grid; gap: 8px; margin: 16px 0; }
+.professional-choices button { text-align: left; }
+.professional-choice { display: flex; gap: 12px; align-items: flex-start; justify-content: flex-start; padding: 14px 16px; line-height: 1.5; }
+.professional-choice b { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #e3e9d6; color: #3e624c; font-size: 14px; }
+.professional-choice[aria-pressed="true"] b { background: #486744; color: #fff; }
+.professional-choices [aria-pressed="true"] { outline: 2px solid #486744; background: #e8eedf; }
+.professional-composer { padding: 10px 0; scroll-margin-block: 90px; }
+.professional-composer .field { margin-top: 0; }
+.professional-composer textarea { min-height: 96px; max-height: 180px; resize: vertical; }
+.app-shell:has(.professional-composer:focus-within) .bottom-nav { visibility: hidden; pointer-events: none; }
+.professional-visual { display: flex; flex-wrap: wrap; gap: 10px; }
+.professional-visual > p { flex-basis: 100%; }
+.professional-visual figure { margin: 0; width: calc(50% - 5px); text-align: center; }
+.professional-visual svg { width: 100%; height: auto; background: #f5f6ec; border-radius: 12px; }
+.professional-module { border-top: 1px solid var(--line); padding: 16px 0; }
+.professional-module-title { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.professional-module-title h3 { margin: 0; }
+.professional-level { display: inline-block; border-radius: 20px; padding: 4px 12px; background: #eef0e5; font-size: 13px; }
+.professional-module[data-level="good"] .professional-level { background: #dfeccd; }
+.professional-module[data-level="needs_work"] .professional-level { background: #f3e6cb; }
+.professional :is(blockquote,pre) { margin: 12px 0; padding-left: 12px; border-left: 3px solid #99af82; white-space: pre-wrap; }
+.professional summary { min-height: 44px; padding: 10px 0; cursor: pointer; }
+.professional-comparison { padding-block: 8px 20px; }
+.professional-month { border-top: 1px solid var(--line); margin: 20px 0; padding-top: 8px; }
+.professional-trends { margin: 12px 0 20px; }
+.professional-trends > div { display: grid; grid-template-columns: 62px minmax(0,1fr); padding: 9px 0; border-bottom: 1px dashed var(--line); }
+.professional-trends dt { font-weight: 600; }
+.professional-trends dd { margin: 0; }
+.professional-timeline { border-left: 2px solid #d4deca; padding-left: 14px; }
+@media (max-width: 420px) { .professional { padding: 16px; } .professional-composer .home-card-actions { display: grid; grid-template-columns: 1fr 1fr; } }

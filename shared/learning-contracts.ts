@@ -1,0 +1,419 @@
+/** Frozen A contract v1.0.0. Browser safe. All wire/persistence objects reject unknown keys. */
+import { z } from 'zod';
+export const SCHEMA_VERSION = '1.0.0' as const;
+const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/);
+const text = z.string().min(1).max(8000);
+const version = z.number().int().positive();
+const utc = z.iso.datetime();
+const nullableTime = utc.nullable();
+const ids = z.array(id).max(500);
+const dimension = z.enum(['理解','逻辑','计算','建模','空间想象']);
+const verdict = z.enum(['correct','incorrect','needs_review']);
+const base = { schemaVersion: z.literal(SCHEMA_VERSION), id };
+const operation = { operationId: id };
+const revision = { evidenceRevision: z.number().int().nonnegative() };
+const ref = z.strictObject({taskId:id,taskVersion:version});
+const sourceTime = z.strictObject({ occurredAt:nullableTime, recordedAt:utc, timezone:z.literal('Asia/Shanghai'), trust:z.enum(['server','legacy_unknown']), legacyLabel:z.string().max(100).nullable() });
+const hint = z.strictObject({id,text,level:version});
+const rubricPoint = z.strictObject({id,description:text,expected:text,weight:z.number().positive(),requiresExplanation:z.boolean()});
+const commonTask = {
+  ...base, version, title:text, question:text, choices:z.array(text), knowledgePoints:ids,
+  primaryDimension:dimension, auxiliaryDimensions:z.array(dimension), familyId:id,
+  variantKind:z.enum(['observation','transfer','delayed','legacy']), difficulty:z.enum(['introductory','standard','stretch']),
+  prerequisites:ids, estimatedMinutes:z.number().int().min(1).max(120),
+  // Explicit coordinates allow D to render validated spatial tasks without guessing orientation.
+  visual:z.strictObject({kind:z.literal('rotation2d'),points:z.array(z.tuple([z.number(),z.number()])),center:z.tuple([z.number(),z.number()]),clockwiseDegrees:z.number(),options:z.array(z.strictObject({label:text,points:z.array(z.tuple([z.number(),z.number()]))}))}).nullable(),
+};
+const TaskDefinition = z.strictObject({...commonTask,answer:z.array(text).min(1),rubric:z.array(rubricPoint).min(1),hints:z.array(hint),commonErrors:z.array(z.strictObject({id,description:text,indicator:text,certainty:z.literal('clue_only')}))});
+const TaskPublicView = z.strictObject({...commonTask,hintAvailable:z.boolean()});
+const LearningSession = z.strictObject({...base,...operation,startedAt:utc,endedAt:nullableTime,status:z.enum(['active','paused','closed']),mode:z.enum(['exploration','support','review']),timezone:z.literal('Asia/Shanghai')});
+// Phase-1 integration (ChatGPT request): an optional mode records an explicit student mode switch on the same session.
+const SessionEvent = z.strictObject({...base,...operation,sessionId:id,status:LearningSession.shape.status,mode:LearningSession.shape.mode.optional(),at:utc});
+const ExposureEvent = z.strictObject({...base,...operation,...ref.shape,sessionId:id,kind:z.enum(['task','hint','answer','chat_help']),hintId:id.nullable(),contentSnapshot:z.string().max(8000).nullable(),sourceTime});
+const Attempt = z.strictObject({...base,...operation,...ref.shape,sessionId:id.nullable(),value:text,sourceTime,exposureIds:ids,hintSnapshot:z.array(hint),answerExposed:z.boolean(),origin:z.enum(['student_api','legacy_import']),exposureHistory:z.enum(['complete','legacy_unknown']),supersedesAttemptId:id.nullable()});
+const Evidence = z.strictObject({...base,...revision,attemptId:id,taskId:id,taskVersion:version,knowledgePointId:id,pointId:id,status:z.enum(['supported','unsupported','uncertain']),quote:z.string().max(8000),location:z.strictObject({start:z.number().int().nonnegative(),end:z.number().int().nonnegative()}),explanation:text,errorClues:z.array(text),uncertainties:z.array(text),source:z.enum(['program','model','human']),createdAt:utc,supersedesEvidenceId:id.nullable()});
+const GradingResult = z.strictObject({...base,...operation,...revision,attemptId:id,verdict,points:z.array(z.strictObject({pointId:id,status:z.enum(['supported','unsupported','uncertain']),evidenceIds:ids})),evidenceIds:ids,errorClues:z.array(text),uncertainties:z.array(text),method:z.enum(['legacy_program','rubric_program','model_assisted','human']),createdAt:utc,supersedesGradingId:id.nullable()});
+const SkillState = z.strictObject({...base,...revision,knowledgePointId:id,dimension,status:z.enum(['unobserved','needs_support','completed_with_help','first_independent','cross_session_independent']),evidenceIds:ids,attemptIds:ids,observedTaskIds:ids,trustedLearningDates:z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),recentDifficulty:z.boolean(),coverage:text,unknowns:z.array(text),computedAt:utc});
+const AssessmentSnapshot = z.strictObject({...base,...revision,createdAt:utc,skills:z.array(SkillState),coverage:z.array(z.strictObject({dimension,knowledgePointIds:ids,evidenceCount:z.number().int().nonnegative(),lastObservedAt:nullableTime,unknowns:z.array(text)})),evidenceIds:ids,limitations:z.array(text)});
+const ReviewPolicy = z.strictObject({...base,version,intervalDays:z.array(z.number().int().positive()).min(1),minimumAdvanceHours:z.number().positive(),helpRetryHours:z.number().positive(),errorRetryHours:z.number().positive(),timezone:z.literal('Asia/Shanghai')});
+const ReviewItem = z.strictObject({...base,...operation,...revision,revision:version,knowledgePointId:id,stage:z.number().int().nonnegative(),task:ref.nullable(),originalDueAt:utc,dueAt:utc,status:z.enum(['active','paused','completed','superseded']),sourceSessionIds:ids,exposureIds:ids,reason:text,postponements:z.array(z.strictObject({from:utc,to:utc,reason:text,at:utc})),planVersionId:id.nullable(),createdAt:utc});
+const ReviewOutcome = z.strictObject({...base,...operation,...revision,reviewItemId:id,reviewRevision:version,attemptId:id,sessionId:id,verdict,independent:z.boolean(),taskNovelty:z.enum(['unseen','seen','unknown']),completedAt:utc,reason:text});
+const statement = z.strictObject({text,kind:z.enum(['fact','inference','unknown']),evidenceIds:ids});
+const ReportSnapshot = z.strictObject({...base,...operation,...revision,createdAt:utc,assessmentSnapshotId:id,statements:z.array(statement),coverage:z.array(text),changes:z.array(text),recommendations:z.array(text),supersedesReportId:id.nullable()});
+const planItem = z.strictObject({id,knowledgePointId:id,taskType:z.enum(['explore','supported_practice','independent_transfer','delayed_check','original_review']),task:ref.nullable(),estimatedMinutes:z.number().int().positive(),scheduledDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),evidenceIds:ids,goal:text,status:z.enum(['proposed','scheduled','paused','completed','superseded'])});
+const PlanFocus = z.strictObject({knowledgePointId:id.optional(),module:dimension,goal:z.string().min(1).max(200)});
+const PlanProposal = z.strictObject({focus:PlanFocus.optional(),...base,...operation,...revision,createdAt:utc,assessmentSnapshotId:id,goal:text,items:z.array(planItem),statements:z.array(statement),alternatives:z.array(text),constraints:z.strictObject({calculationLimit:z.literal(10),requireUnderstandLogicFirst:z.boolean(),timeBudgetMinutes:z.number().positive()}),supersedesProposalId:id.nullable()});
+const PlanVersion = z.strictObject({...base,...operation,...revision,version,proposalId:id,previousVersionId:id.nullable(),goal:text,items:z.array(planItem),changes:z.array(text),confirmation:z.strictObject({action:z.enum(['accept','lighter','reschedule','defer','resume']),confirmedAt:utc,actor:z.literal('student'),expectedPreviousVersionId:id.nullable(),reason:text}),createdAt:utc});
+const MemoryItem = z.strictObject({...base,...operation,text,source:z.literal('student_explicit'),purpose:z.enum(['tutoring','planning']),createdAt:utc,expiresAt:nullableTime,reviewAt:nullableTime,active:z.boolean()});
+const ConsentState = z.strictObject({...base,...operation,optionalMemory:z.boolean(),updatedAt:utc});
+const ErrorCode = z.enum(['invalid_params','unknown_tool','forbidden','not_found','invalid_state','conflict','unavailable','not_implemented','timeout','cancelled','budget_exhausted','provider_auth','provider_rate_limit','provider_error','unsupported_tools','internal_error']);
+const Failure = z.strictObject({code:ErrorCode,message:text,recoverable:z.boolean()});
+// E1: 'generator' is an additive, tool-less structured-output role; it never grades, confirms or writes data.
+const RolePolicy = z.strictObject({role:z.enum(['tutor','assessor','planner','reporter','generator']),allowedTools:ids,maxRounds:z.number().int().min(1).max(4),maxToolExecutions:z.number().int().min(1).max(6)});
+const ToolCall = z.strictObject({...base,runId:id,callId:id,name:id,argumentsHash:z.string().length(64),status:z.enum(['succeeded','failed']),errorCode:ErrorCode.nullable(),evidenceIds:ids,dataVersion:z.number().int().nonnegative(),at:utc});
+// P0: a Tutor-recorded stuck point for the two open calculation points. A hypothesis from conversation, never a skill state;
+// studentQuote is program-checked to be verbatim student text from the same Tutor turn.
+const stuckKnowledgePoint = z.enum(['negative-brackets','like-terms']);
+// G0: studentConfirmed is written false by the program at record time (the model's value is ignored). A stuck point counts as
+// student-confirmed only when the student confirms a ProblemRecord whose stuckPointId points to it (a click, not model output).
+const StuckPoint = z.strictObject({...base,runId:id,sessionId:id.nullable(),knowledgePointId:stuckKnowledgePoint,kind:z.enum(['concept','method','start']),studentQuote:z.string().min(1).max(200),summary:z.string().min(1).max(200),studentConfirmed:z.boolean(),createdAt:utc});
+// Latest graded attempt as the Tutor may see it: verdict and clue descriptions only, never the trusted answer, rubric or hint text.
+const LatestFeedback = z.strictObject({attemptId:id,...ref.shape,title:text,knowledgePointIds:ids,studentValue:text,verdict,points:z.array(z.strictObject({pointId:id,status:z.enum(['supported','unsupported','uncertain'])})),errorClues:z.array(text),hintLevelsUsed:z.array(version),answerExposed:z.boolean(),attemptedAt:nullableTime});
+const ToolResult = z.discriminatedUnion('ok',[
+  z.strictObject({schemaVersion:z.literal(SCHEMA_VERSION),callId:id,ok:z.literal(true),dataVersion:z.number().int().nonnegative(),evidenceIds:ids,data:z.union([TaskPublicView,GradingResult,AssessmentSnapshot,z.strictObject({sessions:z.array(LearningSession),attemptCount:z.number().int().nonnegative(),memories:z.array(MemoryItem)}),z.strictObject({attempts:z.array(Attempt),gradings:z.array(GradingResult),evidence:z.array(Evidence)}),z.strictObject({skills:z.array(SkillState),limitations:z.array(text)}),z.strictObject({hint:z.string(),level:version,exposureId:id}),z.strictObject({reviews:z.array(ReviewItem)}),PlanProposal,z.strictObject({candidate:z.string(),requiresStudentConfirmation:z.literal(true)}),StuckPoint,z.strictObject({feedback:LatestFeedback.nullable()})])}),
+  z.strictObject({schemaVersion:z.literal(SCHEMA_VERSION),callId:id,ok:z.literal(false),dataVersion:z.number().int().nonnegative(),evidenceIds:ids,error:Failure}),
+]);
+// E1 attached entity: audit of one program-gated task generation. Never stores keys, headers, reasoning,
+// raw model text or rejected candidate answers; a published task lives separately as an immutable TaskDefinition.
+const generationReason = z.enum(['schema_invalid','tool_call_not_allowed','knowledge_point_mismatch','difficulty_not_allowed','params_invalid','params_out_of_range','degenerate_variable_cancels','degenerate_constant_cancels','not_covering_target','expression_mismatch','answer_mismatch','steps_invalid','steps_final_mismatch','grader_unsupported','duplicate_content','evidence_reference_invalid','focus_not_allowed']);
+const GenerationRecord = z.strictObject({...base,...operation,
+  knowledgePointId:z.enum(['negative-brackets','like-terms']),purpose:z.enum(['practice','review']),basis:z.enum(['no_evidence','difficulty','help_dependence','independent','review_due']),
+  reviewItemId:id.nullable(),status:z.enum(['published','rejected','failed','cancelled']),
+  providerKind:z.enum(['real_http','synthetic','offline']),modelId:id,promptVersion:id,templateVersion:id,validatorVersion:id,
+  requestFingerprint:z.string().length(64),evidenceRevision:z.number().int().nonnegative(),evidenceIds:ids,attemptIds:ids,
+  candidates:z.array(z.strictObject({round:z.number().int().min(1).max(2),status:z.enum(['accepted','rejected']),templateId:id.nullable(),difficulty:z.enum(['introductory','standard','stretch']).nullable(),parameterFingerprint:z.string().length(64).nullable(),contentFingerprint:z.string().length(64).nullable(),reasons:z.array(generationReason).max(17)})).max(2),
+  taskId:id.nullable(),taskVersion:version.nullable(),focus:id.nullable(),familyId:id.nullable(),relation:z.literal('same_family_numeric_variant'),variantOfTaskIds:ids,
+  runId:id.nullable(),failure:Failure.nullable(),createdAt:utc});
+const AgentRun = z.strictObject({...base,...operation,role:RolePolicy.shape.role,providerKind:z.enum(['real_http','synthetic','offline']),status:z.enum(['completed','unavailable','timeout','cancelled','budget_exhausted','failed']),rounds:z.number().int().min(0).max(4),toolExecutions:z.number().int().min(0).max(6),callIds:ids,permissionFingerprint:z.string().length(64),startedAt:utc,finishedAt:utc,error:Failure.nullable()});
+const ChatMessage = z.strictObject({role:z.enum(['user','assistant']),content:text});
+const SubmitAttempt = z.strictObject({...operation,...ref.shape,sessionId:id,value:text});
+// ---- G0 首页改版（2026-10-21）：只做加法。旧记录、旧路由、旧 ChatRequest 照常可用。 ----
+// 「对话场次」sessionId 由程序在 chatTurns 里分配（chat-…），不是 LearningSession.id。
+const ChatStage = z.enum(['companion','listen','probe','think','reflect','safety','rest']);
+// Student-clicked option intents. formal_test = "做个正式测试" on the needs-check card.
+const chatIntent = z.enum(['study','life','decline_study','start_together','formal_test']);
+// legacy = D two-step Tutor (unchanged); home = G0 stage machine in server/agents/stages.ts.
+const chatFlow = z.enum(['legacy','home']);
+const stageField = z.enum(['problemDraft','observation','progressCardDraft','memoryDraft']);
+const shortText = z.string().min(1).max(200);
+const problemKnowledgePoint = z.enum(['math-language','counterexample','negative-brackets','like-terms','fixed-variable-cost','rotation-2d','other']);
+const ModeSuggestion = z.strictObject({mode:z.literal('professional'),reason:shortText});
+// What the model may propose in probe; answerStatus is program-decided and only exists on ProblemRecord.
+// One stuck-point concept: the P0 StuckPoint entity. stuckQuote is the student's verbatim words about this problem;
+// stuckPointId optionally links the StuckPoint the Tutor recorded (same knowledge point, program-checked).
+const ProblemDraft = z.strictObject({source:z.enum(['photo','spoken','catalog']),questionText:z.string().min(1).max(2000).nullable(),studentWork:z.string().min(1).max(2000).nullable(),knowledgePointId:problemKnowledgePoint,stuckQuote:shortText,stuckPointId:id.nullable(),catalogTask:ref.nullable()});
+const ProblemRecord = z.strictObject({...base,...operation,...ProblemDraft.shape,sessionId:id.nullable(),answerStatus:z.enum(['verified','unknown']),confirmedAt:utc});
+// Server-only reference answer. Never in view(), logs, traces, prompts or any response.
+const ProblemSecret = z.strictObject({...base,problemId:id,answer:z.array(z.string().min(1).max(500)).min(1).max(5),origin:z.enum(['catalog','student_provided','program_computed']),createdAt:utc});
+// One think→reflect episode. Append-only revisions (key id:r<revision>), like ReviewItem.
+// Optional additive state. All learning conclusions are derived from referenced attempts/exposures.
+const EpisodeLoop = z.strictObject({
+ knowledgePointId:z.literal('negative-brackets'),learningSessionId:id,
+ hypotheses:z.array(z.strictObject({text:shortText,quote:shortText,status:z.enum(['proposed','confirmed','corrected']),source:z.enum(['model','program','student']),at:utc})).min(1).max(50),
+ phase:z.enum(['practice','verification']),practice:ref,practiceAttemptIds:ids,
+ verification:z.strictObject({status:z.enum(['not_offered','offered','in_progress','completed','skipped','unavailable']),task:ref.nullable(),attemptIds:ids}),
+ help:z.array(z.strictObject({task:ref,level:z.number().int().min(0).max(3),representation:z.enum(['ladder','sign_table','dialogue']),text:z.string().min(1).max(600),exposureId:id,at:utc})).max(100),
+ draft:z.string().max(2000),ending:z.enum(['student_end','budget','completed']).nullable(),
+});
+const LearningEpisode = z.strictObject({...base,loop:EpisodeLoop.optional(),revision:version,sessionId:id,problemId:id.nullable(),task:ref.nullable(),stage:z.enum(['think','reflect']),helpLevelsUsed:z.array(z.number().int().min(1).max(3)).max(30),studentSolvedAt:nullableTime,endReason:z.enum(['solved','understood','turn_limit','student_end']).nullable(),status:z.enum(['active','reflecting','closed']),startedAt:utc,updatedAt:utc});
+const cardText = z.string().min(1).max(300);
+const ProgressCardDraft = z.strictObject({episodeId:id.nullable(),breakthrough:cardText.nullable(),method:cardText.nullable(),nextTry:cardText.nullable()});
+const cardField = z.enum(['breakthrough','method','nextTry']);
+const confidence = z.enum(['more_sure','about_same','still_unsure','prefer_not']);
+// aiDraft and the student's confirmed text are stored separately; a null student field is a skipped column.
+const ProgressCard = z.strictObject({...base,...operation,sessionId:id,episodeId:id.nullable(),aiDraft:ProgressCardDraft.nullable(),breakthrough:cardText.nullable(),method:cardText.nullable(),nextTry:cardText.nullable(),skipped:z.array(cardField).max(3),confidence:confidence.nullable(),confirmedAt:utc});
+const MemoryDraft = z.strictObject({text:shortText,kind:z.enum(['event','interest','method']),origin:z.enum(['chat','progress_card'])});
+const MemoryMention = z.strictObject({...base,memoryId:id,sessionId:id.nullable(),via:z.enum(['greeting','chat']),at:utc});
+// Program-recorded actual chat offers; no optional memory text or fake memory references.
+const MemoryOffer = z.strictObject({...base,...operation,sessionId:id,turn:version,stage:ChatStage,at:utc});
+const Greeting = z.strictObject({text:z.string().min(1).max(300),memoryId:id.nullable(),summaryId:id.nullable(),memoryOff:z.boolean()});
+// What the model may output in an allowed probe turn; the program adds id/session/status/time.
+const ObservationDraft = z.strictObject({dimension:z.enum(['理解','逻辑']),signal:z.enum(['clear','partial','confused']),quote:shortText,note:shortText});
+// sceneId: null = 学习话题观察（probe）；'gugong' 等生活场景 id = 生活话题观察。default(null) 让旧的 parse 调用不必改。
+const ChatObservation = z.strictObject({...base,...ObservationDraft.shape,sceneId:id.nullable().default(null),sessionId:id,status:z.literal('unverified'),at:utc});
+// 生活话题观察（2026-10-24）：一次场景 = companion 轮触发开始，逐问推进，done/aborted 终态。追加式，每步一条新记录。
+const LifeSceneState = z.strictObject({...base,...operation,sessionId:id,sceneId:id,step:z.number().int().nonnegative(),status:z.enum(['active','done','aborted']),at:utc});
+const ConversationSummary = z.strictObject({...base,...operation,sessionId:id,trigger:z.enum(['student_end','farewell']),topics:z.array(z.string().min(1).max(100)).max(5),observationIds:ids,comparedWithSummaryId:id.nullable(),changes:z.array(shortText).max(5),planSuggestions:z.array(z.string().min(1).max(100)).min(1).max(3),suggestProfessionalMode:z.boolean(),progressCardId:id.nullable(),mode:z.enum(['model','local_rules']),createdAt:utc});
+// One home-flow turn as decided by the stage machine. No student text is stored. dropped = fields the program discarded.
+const ChatTurn = z.strictObject({...base,...operation,sessionId:id,turn:version,stage:ChatStage,intent:chatIntent.nullable(),problemId:id.nullable(),episodeId:id.nullable(),
+  listenTurns:z.number().int().nonnegative(),companionStreak:z.number().int().nonnegative(),thinkTurns:z.number().int().nonnegative(),lastProbeTurn:z.number().int().positive().nullable(),
+  needsCheckAsked:z.boolean(),askStudyAsked:z.boolean(),studyDeclined:z.boolean(),ended:z.boolean(),
+  signals:z.strictObject({needsCheck:z.boolean(),askStudy:z.boolean(),askProblem:z.boolean(),probeAllowed:z.boolean(),modeSuggestion:z.boolean()}),
+  dropped:z.array(z.strictObject({field:stageField,reason:z.enum(['stage_not_allowed','memory_off','invalid','not_implemented'])})).max(8),
+  // Program length gate on the Tutor reply (≤ TUTOR_REPLY_MAX_CHARS): ok, rewritten once by the model, or cut at a sentence end.
+  replyFit:z.enum(['ok','retried','truncated']),at:utc});
+// 对话回放（2026-10-24）：每轮两条（学生 + ILoopStudy）追加式原文，供首页“对话记录”回看当时说了什么。
+// 学习记录：不受记忆开关影响，随重置演示清除。安全轮（SAFETY_PATTERN）在入口拦截，永不写入。
+const ChatLog = z.strictObject({...base,...operation,sessionId:id,role:z.enum(['user','assistant']),content:text,at:utc});
+const ChatReply = z.strictObject({text,stage:ChatStage,sessionId:id.nullable(),run:AgentRun.nullable(),safety:z.boolean(),quickReplies:z.array(z.string().min(1).max(40)).max(6),suggestions:z.array(TaskPublicView).max(3),
+  askStudy:z.boolean(),needsCheck:z.boolean(),askProblem:z.boolean(),modeSuggestion:ModeSuggestion.nullable(),
+  problemDraft:ProblemDraft.nullable(),progressCardDraft:ProgressCardDraft.nullable(),memoryDraft:MemoryDraft.nullable(),summary:ConversationSummary.nullable()});
+// Phase-1 integration (zCode request 2): how long a confirmed memory lasts. forever: never expires, review after 30 days; 7d/30d: expires, no review.
+const memoryRetention = z.enum(['forever','7d','30d']);
+export const MEMORY_REVIEW_DAYS_DEFAULT = 30;
+/** The expiresAt/reviewAt pair for a retention choice (omitted = forever). Shared so the server and the memory page agree. */
+export function retentionWindow(retention:'forever'|'7d'|'30d'|undefined,now:string):{expiresAt:string|null;reviewAt:string|null}{
+  const at=(days:number)=>new Date(Date.parse(now)+days*86_400_000).toISOString();
+  return retention==='7d'?{expiresAt:at(7),reviewAt:null}:retention==='30d'?{expiresAt:at(30),reviewAt:null}:{expiresAt:null,reviewAt:at(MEMORY_REVIEW_DAYS_DEFAULT)};
+}
+/** Tutor reply length gate (characters). The prompt asks for ≤60; the program retries once above this, then cuts at a sentence end. */
+export const TUTOR_REPLY_MAX_CHARS = 80;
+/** Memory selection for the Tutor context: at most this many active memories and this many characters in total. */
+export const MEMORY_CONTEXT_MAX_ITEMS = 5;
+export const MEMORY_CONTEXT_MAX_CHARS = 300;
+/** Recognize: cropped, masked JPEG only, ≤1.5MB decoded. Forwarded once, never stored or logged. */
+export const RECOGNIZE_MAX_IMAGE_BYTES = 1_500_000;
+const RECOGNIZE_MAX_BASE64 = Math.ceil(RECOGNIZE_MAX_IMAGE_BYTES/3)*4;
+const RecognizeResult = z.strictObject({draft:ProblemDraft.nullable(),notice:shortText.nullable()});
+// ---- G2 第二期：专业模式（2026-10-21）：只做加法。报告、月阶段、趋势都是学习记录，不受记忆开关影响，重置演示时清除。 ----
+/** Fixed interview order (decision 15): 理解 and 逻辑 are required and come first; the rest follow in this order. */
+export const INTERVIEW_MODULE_ORDER = ['理解','逻辑','计算','建模','空间想象'] as const;
+export const INTERVIEW_REQUIRED_MODULES = ['理解','逻辑'] as const;
+const moduleLevel = z.enum(['good','partial','needs_work','not_tested']);
+/** Student-facing level names (decision 16). No total score, no ranking. */
+export const MODULE_LEVEL_LABELS = {good:'掌握得不错',partial:'部分掌握',needs_work:'需要加强',not_tested:'还没测到'} as const;
+// Why the program gave a level, one code per rule in 01-Claude 第二期 §2「等级判定」. The model words the level, never picks it.
+const levelBasis = z.enum(['correct_with_reason','correct_reason_incomplete','completed_with_hint','correct_on_transfer','incorrect_on_both','not_tested']);
+export const LEVEL_BY_BASIS = {correct_with_reason:'good',correct_reason_incomplete:'partial',completed_with_hint:'partial',correct_on_transfer:'partial',incorrect_on_both:'needs_work',not_tested:'not_tested'} as const;
+/** RetestReminder shows from this many days before MonthStage.retestSuggestedAt (decision 17, in-app only). */
+export const RETEST_REMIND_DAYS_BEFORE = 3;
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+// question = the module's catalog question; follow_up = "你是怎么想的" (not a new task, no attempt); transfer = same-family task asked after a wrong answer.
+const interviewTurnKind = z.enum(['question','follow_up','transfer']);
+const InterviewPending = z.strictObject({module:dimension,task:ref,kind:interviewTurnKind,prompt:z.string().min(1).max(300),mode:z.enum(['model','local_rules']),askedAt:utc});
+// One professional-mode interview. Append-only revisions (key id:r<revision>), like LearningEpisode.
+// learningSessionId = the exploration LearningSession it runs in, entered through learning/start's explicit switchMode; a resume on a new day records the new session.
+// pending = the question ILoopStudy asked and the student has not answered yet; answered questions are InterviewTurns and are never asked again.
+const InterviewSession = z.strictObject({...base,...operation,revision:version,learningSessionId:id,
+  moduleOrder:z.tuple([z.literal('理解'),z.literal('逻辑'),z.literal('计算'),z.literal('建模'),z.literal('空间想象')]),
+  currentModule:dimension.nullable(),completedModules:z.array(dimension).max(5),status:z.enum(['in_progress','paused','completed']),
+  pending:InterviewPending.nullable(),startedAt:utc,pausedAt:nullableTime,completedAt:nullableTime,updatedAt:utc});
+// One answered question. attemptId links the Attempt graded through the normal submit path. It sits on the follow-up turn: the follow-up answer
+// completes the attempt (as its explanation line when the task has a reason point), so question/transfer turns carry null. A follow-up is never a new task.
+const InterviewTurn = z.strictObject({...base,...operation,interviewId:id,seq:version,module:dimension,task:ref,kind:interviewTurnKind,
+  prompt:z.string().min(1).max(300),answer:z.string().min(1).max(2000),attemptId:id.nullable(),mode:z.enum(['model','local_rules']),askedAt:utc,answeredAt:utc});
+// scope marks every level as 「本次观察」 of this interview. quotes are the student's own words (依据原话); suggestions only for partial/needs_work.
+const ModuleLevel = z.strictObject({module:dimension,level:moduleLevel,basis:levelBasis,evidenceIds:ids,attemptIds:ids,turnIds:ids,
+  quotes:z.array(shortText).max(5),wording:shortText.nullable(),suggestions:z.array(shortText).max(2),scope:z.literal('this_interview')});
+// Versioned snapshot: a later report for the same interview supersedes, never edits. No total score or rank field exists.
+const ProfessionalReport = z.strictObject({...base,...operation,...revision,interviewId:id,version,supersedesReportId:id.nullable(),comparedWithReportId:id.nullable(),
+  modules:z.array(ModuleLevel).length(5),
+  // Home-mode 「待核实」 observations of the same dimension: confirmed by this interview, or not seen.
+  observationChecks:z.array(z.strictObject({observationId:id,dimension:z.enum(['理解','逻辑']),result:z.enum(['confirmed','not_seen'])})).max(50),
+  changes:z.array(z.strictObject({module:dimension,from:moduleLevel,to:moduleLevel,note:shortText})).max(5),
+  mode:z.enum(['model','local_rules']),createdAt:utc});
+// Month stage goal. Append-only revisions. weeks link the weekly plan drafts/versions made through the existing planning engine.
+// confirmation is written by the program from the student's click only.
+const MonthStage = z.strictObject({...base,...operation,revision:version,month,module:dimension,goal:shortText,sourceReportId:id,
+  weeks:z.array(z.strictObject({weekStart:day,proposalId:id.nullable(),planVersionId:id.nullable()})).max(6),
+  retestSuggestedAt:day,status:z.enum(['draft','confirmed','deferred','superseded']),
+  confirmation:z.strictObject({action:z.enum(['accept','defer']),confirmedAt:utc,actor:z.literal('student')}).nullable(),
+  retestDeclinedAt:nullableTime,mode:z.enum(['model','local_rules']),createdAt:utc,updatedAt:utc});
+// Derived from ProfessionalReport (not stored): one module level per month; the level always equals the source report's.
+const TrendPoint = z.strictObject({month,module:dimension,level:moduleLevel,sourceReportId:id,reportCreatedAt:utc});
+const TrendQuery = z.strictObject({latest:z.array(TrendPoint).max(600),history:z.array(TrendPoint).max(5000)});
+const RetestReminder = z.strictObject({stageId:id,month,retestSuggestedAt:day,remindFrom:day});
+// What one interview call returns. text is what ILoopStudy says now; task is the pending question's public view (choices/visual), never the answer.
+const InterviewStep = z.strictObject({text,safety:z.boolean(),interview:InterviewSession.nullable(),task:TaskPublicView.nullable(),turn:InterviewTurn.nullable(),reportReady:z.boolean(),run:AgentRun.nullable()});
+const tools = {
+  get_learning_context:z.strictObject({}),
+  query_learning_evidence:z.strictObject({taskId:id.optional()}),
+  get_skill_state:z.strictObject({knowledgePointId:id.optional()}),
+  select_task:z.strictObject({sessionId:id,dimension:dimension.optional(),knowledgePointId:stuckKnowledgePoint.optional()}),
+  grade_attempt:z.strictObject({attemptId:id}),
+  request_hint:z.strictObject({taskId:id}),
+  get_hint:z.strictObject({sessionId:id,taskId:id,taskVersion:version,level:version}),
+  get_due_reviews:z.strictObject({}),
+  propose_plan:z.strictObject({timeBudgetMinutes:z.number().int().min(1).max(30)}),
+  propose_memory:z.strictObject({text}),
+  record_stuck_point:z.strictObject({knowledgePointId:stuckKnowledgePoint,kind:StuckPoint.shape.kind,studentQuote:StuckPoint.shape.studentQuote,summary:StuckPoint.shape.summary,studentConfirmed:z.boolean()}),
+  get_latest_feedback:z.strictObject({}),
+};
+export const schemas = {
+  TaskDefinition,TaskPublicView,LearningSession,SessionEvent,Attempt,ExposureEvent,GradingResult,Evidence,SkillState,AssessmentSnapshot,
+  ReviewPolicy,ReviewItem,ReviewOutcome,ReportSnapshot,PlanProposal,PlanVersion,MemoryItem,ConsentState,ToolCall,ToolResult,AgentRun,RolePolicy,GenerationRecord,StuckPoint,LatestFeedback,
+  SourceTime:sourceTime,Failure,SubmitAttempt,
+  StartSession:z.strictObject({...operation,mode:LearningSession.shape.mode}),
+  SessionState:z.strictObject({...operation,sessionId:id,status:LearningSession.shape.status}),
+  Expose:z.strictObject({...operation,...ref.shape,sessionId:id,kind:ExposureEvent.shape.kind,hintId:id.nullable()}),
+  SetConsent:z.strictObject({...operation,optionalMemory:z.boolean()}),
+  Remember:z.strictObject({...operation,text,source:MemoryItem.shape.source,purpose:MemoryItem.shape.purpose,expiresAt:nullableTime,reviewAt:nullableTime}),
+  MemoryState:z.strictObject({...operation,memoryId:id,action:z.enum(['stop','delete'])}),
+  // G0: flow/intent/problemId are optional; intent and problemId are only accepted with flow 'home'.
+  ChatRequest:z.strictObject({...operation,history:z.array(ChatMessage).min(1).max(20),flow:chatFlow.optional(),intent:chatIntent.optional(),problemId:id.optional()}),
+  ImportRequest:z.strictObject({...operation,source:z.string().max(500000),previewHash:z.string().length(64),scope:z.literal('attempts_only')}),
+  ImportPreviewRequest:z.strictObject({source:z.string().max(500000)}),
+  ToolArguments:tools,
+  // G0 首页改版
+  ModeSuggestion,ProblemDraft,ProblemRecord,ProblemSecret,LearningEpisode,ProgressCardDraft,ProgressCard,MemoryDraft,MemoryMention,MemoryOffer,Greeting,
+  ObservationDraft,ChatObservation,ConversationSummary,ChatTurn,ChatLog,ChatReply,RecognizeResult,LifeSceneState,
+  ConfirmProblem:z.strictObject({...operation,sessionId:id.nullable(),draft:ProblemDraft,referenceAnswer:z.string().min(1).max(500).nullable()}),
+  Recognize:z.strictObject({...operation,sessionId:id.nullable(),mimeType:z.literal('image/jpeg'),image:z.string().min(4).max(RECOGNIZE_MAX_BASE64).regex(/^[A-Za-z0-9+/]+={0,2}$/),maskConfirmed:z.literal(true)}),
+  ConfirmProgressCard:z.strictObject({...operation,sessionId:id,episodeId:id.nullable(),aiDraft:ProgressCardDraft.nullable(),breakthrough:cardText.nullable(),method:cardText.nullable(),nextTry:cardText.nullable(),confidence:confidence.nullable()}),
+  ConfirmMemoryDraft:z.strictObject({...operation,sessionId:id.nullable(),draft:MemoryDraft,text:shortText,retention:memoryRetention.optional()}),
+  GreetingRequest:z.strictObject({...operation}),
+  EndConversation:z.strictObject({...operation,sessionId:id,history:z.array(ChatMessage).max(20)}),
+  // G2 第二期：专业模式
+  InterviewSession,InterviewPending,InterviewTurn,ModuleLevel,ProfessionalReport,MonthStage,TrendPoint,TrendQuery,RetestReminder,InterviewStep,
+  InterviewStart:z.strictObject({...operation}),
+  InterviewAnswer:z.strictObject({...operation,interviewId:id,expectedRevision:version,text:z.string().min(1).max(2000)}),
+  InterviewPause:z.strictObject({...operation,interviewId:id}),
+  InterviewResume:z.strictObject({...operation,interviewId:id}),
+  InterviewReportRequest:z.strictObject({...operation,interviewId:id}),
+  DraftMonthStage:z.strictObject({...operation,reportId:id}),
+  DraftStageWeek:z.strictObject({...operation,stageId:id,expectedRevision:version}),
+  ConfirmMonthStage:z.strictObject({...operation,stageId:id,expectedRevision:version,action:z.enum(['accept','defer']),goal:shortText}),
+  DeclineRetest:z.strictObject({...operation,stageId:id}),
+};
+export type TaskDefinition = z.infer<typeof TaskDefinition>;
+export type TaskPublicView = z.infer<typeof TaskPublicView>;
+export type SessionEvent = z.infer<typeof SessionEvent>;
+export type LearningSession = z.infer<typeof LearningSession>;
+export type Attempt = z.infer<typeof Attempt>;
+export type ExposureEvent = z.infer<typeof ExposureEvent>;
+export type GradingResult = z.infer<typeof GradingResult>;
+export type Evidence = z.infer<typeof Evidence>;
+export type SkillState = z.infer<typeof SkillState>;
+export type AssessmentSnapshot = z.infer<typeof AssessmentSnapshot>;
+export type ReviewPolicy = z.infer<typeof ReviewPolicy>;
+export type ReviewItem = z.infer<typeof ReviewItem>;
+export type ReviewOutcome = z.infer<typeof ReviewOutcome>;
+export type ReportSnapshot = z.infer<typeof ReportSnapshot>;
+export type PlanProposal = z.infer<typeof PlanProposal>;
+export type PlanVersion = z.infer<typeof PlanVersion>;
+export type MemoryItem = z.infer<typeof MemoryItem>;
+export type ConsentState = z.infer<typeof ConsentState>;
+export type ToolCall = z.infer<typeof ToolCall>;
+export type ToolResult = z.infer<typeof ToolResult>;
+export type AgentRun = z.infer<typeof AgentRun>;
+export type RolePolicy = z.infer<typeof RolePolicy>;
+export type GenerationRecord = z.infer<typeof GenerationRecord>;
+export type StuckPoint = z.infer<typeof StuckPoint>;
+export type LatestFeedback = z.infer<typeof LatestFeedback>;
+export type Failure = z.infer<typeof Failure>;
+export type SourceTime = z.infer<typeof sourceTime>;
+export type SubmitAttempt = z.infer<typeof SubmitAttempt>;
+export type ChatRequest = z.infer<typeof schemas.ChatRequest>;
+export type Dimension = z.infer<typeof dimension>;
+// G0 首页改版
+export type ChatMessage = z.infer<typeof ChatMessage>;
+export type ChatStage = z.infer<typeof ChatStage>;
+export type ChatIntent = z.infer<typeof chatIntent>;
+export type ChatFlow = z.infer<typeof chatFlow>;
+export type StageField = z.infer<typeof stageField>;
+export type ProblemKnowledgePoint = z.infer<typeof problemKnowledgePoint>;
+export type ModeSuggestion = z.infer<typeof ModeSuggestion>;
+export type ProblemDraft = z.infer<typeof ProblemDraft>;
+export type ProblemRecord = z.infer<typeof ProblemRecord>;
+export type ProblemSecret = z.infer<typeof ProblemSecret>;
+export type LearningEpisode = z.infer<typeof LearningEpisode>;
+export type ProgressCardDraft = z.infer<typeof ProgressCardDraft>;
+export type ProgressCard = z.infer<typeof ProgressCard>;
+export type ProgressConfidence = z.infer<typeof confidence>;
+export type MemoryDraft = z.infer<typeof MemoryDraft>;
+export type MemoryMention = z.infer<typeof MemoryMention>;
+export type MemoryOffer = z.infer<typeof MemoryOffer>;
+export type Greeting = z.infer<typeof Greeting>;
+export type ObservationDraft = z.infer<typeof ObservationDraft>;
+export type ChatObservation = z.infer<typeof ChatObservation>;
+export type LifeSceneState = z.infer<typeof LifeSceneState>;
+export type ConversationSummary = z.infer<typeof ConversationSummary>;
+export type ChatTurn = z.infer<typeof ChatTurn>;
+export type ChatLog = z.infer<typeof ChatLog>;
+export type ChatReply = z.infer<typeof ChatReply>;
+export type RecognizeResult = z.infer<typeof RecognizeResult>;
+export type ConfirmProblem = z.infer<typeof schemas.ConfirmProblem>;
+export type Recognize = z.infer<typeof schemas.Recognize>;
+export type ConfirmProgressCard = z.infer<typeof schemas.ConfirmProgressCard>;
+export type ConfirmMemoryDraft = z.infer<typeof schemas.ConfirmMemoryDraft>;
+export type MemoryRetention = z.infer<typeof memoryRetention>;
+export type GreetingRequest = z.infer<typeof schemas.GreetingRequest>;
+export type EndConversation = z.infer<typeof schemas.EndConversation>;
+// G2 第二期：专业模式
+export type InterviewModule = Dimension;
+export type ModuleLevelValue = z.infer<typeof moduleLevel>;
+export type ModuleLevelBasis = z.infer<typeof levelBasis>;
+export type InterviewTurnKind = z.infer<typeof interviewTurnKind>;
+export type InterviewPending = z.infer<typeof InterviewPending>;
+export type InterviewSession = z.infer<typeof InterviewSession>;
+export type InterviewTurn = z.infer<typeof InterviewTurn>;
+export type ModuleLevel = z.infer<typeof ModuleLevel>;
+export type ProfessionalReport = z.infer<typeof ProfessionalReport>;
+export type MonthStage = z.infer<typeof MonthStage>;
+export type TrendPoint = z.infer<typeof TrendPoint>;
+export type TrendQuery = z.infer<typeof TrendQuery>;
+export type RetestReminder = z.infer<typeof RetestReminder>;
+export type InterviewStep = z.infer<typeof InterviewStep>;
+export type InterviewStart = z.infer<typeof schemas.InterviewStart>;
+export type InterviewAnswer = z.infer<typeof schemas.InterviewAnswer>;
+export type InterviewPause = z.infer<typeof schemas.InterviewPause>;
+export type InterviewResume = z.infer<typeof schemas.InterviewResume>;
+export type InterviewReportRequest = z.infer<typeof schemas.InterviewReportRequest>;
+export type DraftMonthStage = z.infer<typeof schemas.DraftMonthStage>;
+export type ConfirmMonthStage = z.infer<typeof schemas.ConfirmMonthStage>;
+export type DeclineRetest = z.infer<typeof schemas.DeclineRetest>;
+/** Program verdict on a model-proposed field: accepted value or reasons it was discarded. */
+export type Validation<T> = {ok:true;value:T}|{ok:false;reasons:string[]};
+export interface Clock { now(): string }
+export interface EntityMap {
+  tasks:TaskDefinition; sessions:LearningSession; sessionEvents:SessionEvent; attempts:Attempt; exposures:ExposureEvent; gradings:GradingResult;
+  evidence:Evidence; skills:SkillState; assessments:AssessmentSnapshot; reviewPolicies:ReviewPolicy; reviewItems:ReviewItem;
+  reviewOutcomes:ReviewOutcome; reports:ReportSnapshot; proposals:PlanProposal; plans:PlanVersion; memories:MemoryItem; consents:ConsentState; toolCalls:ToolCall; runs:AgentRun;
+  /** E1 attached audit records; included in reset like every other collection. */
+  generations:GenerationRecord;
+  /** P0 Tutor stuck-point hypotheses; necessary learning records, cleared by reset. */
+  stuckPoints:StuckPoint;
+  /** G0 首页改版. problemSecrets never leaves the server; observations/summaries are learning records independent of the memory switch. All cleared by reset. */
+  problems:ProblemRecord; problemSecrets:ProblemSecret; episodes:LearningEpisode; progressCards:ProgressCard; memoryMentions:MemoryMention; memoryOffers:MemoryOffer;
+  observations:ChatObservation; summaries:ConversationSummary; chatTurns:ChatTurn;
+  /** 对话回放（2026-10-24）：每轮两条的聊天原文。学习记录，不受记忆开关影响，重置演示时清除；安全轮永不写入。 */
+  chatLog:ChatLog;
+  /** 生活话题观察（2026-10-24）：场景推进记录。学习记录，不受记忆开关影响，重置演示时清除。 */
+  lifeScenes:LifeSceneState;
+  /** G2 第二期. Necessary learning records independent of the memory switch; cleared by reset. interviews/monthStages are revisioned (key id:r<revision>).
+   * TrendPoint is derived from professionalReports and has no collection. */
+  interviews:InterviewSession; interviewTurns:InterviewTurn; professionalReports:ProfessionalReport; monthStages:MonthStage;
+}
+/** Synchronous single-process SQLite transaction. Do not await inside transaction callbacks. append never replaces. */
+export interface LearningRepository {
+  get<K extends keyof EntityMap>(collection:K,id:string):EntityMap[K]|undefined;
+  list<K extends keyof EntityMap>(collection:K):EntityMap[K][];
+  append<K extends keyof EntityMap>(collection:K,value:EntityMap[K]):void;
+  transaction<T>(work:()=>T):T;
+  /** A receipt is scoped across events; same ID + different request fails. Work and receipt commit atomically. */
+  once<T>(operationId:string,request:unknown,work:()=>T):T;
+  revision():number;
+  /** Changes to attempts/exposures/gradings/evidence only; derived records and traces do not advance this. */
+  evidenceRevision():number;
+  setMemoryState(id:string,action:'stop'|'delete'):void;
+  /** Authenticated student reset only. Never exposed as a model tool. */
+  receipt?<T>(operationId:string,request:unknown):{found:boolean;value?:T};
+  reset?():void;
+  close():void;
+}
+export interface TaskSelection { sessionId:string; dimension?:Dimension; knowledgePointId?:string; excludeTaskIds:string[]; limit:number }
+export interface TaskCatalog {
+  definition(taskId:string,taskVersion:number):TaskDefinition|undefined;
+  publicTask(taskId:string,taskVersion:number):TaskPublicView|undefined;
+  candidates(selection:TaskSelection):TaskPublicView[];
+}
+export interface EngineContext { repository:LearningRepository; clock:Clock; catalog:TaskCatalog }
+export interface AssessmentEnginePort {
+  readonly id:string;
+  catalog:TaskCatalog;
+  grade(input:{attemptId:string;operationId:string},context:EngineContext):Promise<GradingResult>;
+  snapshot(input:{operationId:string},context:EngineContext):Promise<AssessmentSnapshot>;
+}
+export interface PlanningEnginePort {
+  readonly id:string;
+  due(input:{at:string;includePaused:boolean},context:EngineContext):Promise<ReviewItem[]>;
+  recordOutcome(input:ReviewOutcome,context:EngineContext):Promise<ReviewItem[]>;
+  propose(input:{operationId:string;assessment:AssessmentSnapshot;timeBudgetMinutes:number;focus?:z.infer<typeof PlanFocus>},context:EngineContext):Promise<PlanProposal>;
+  confirm(input:{operationId:string;proposalId:string;expectedPreviousVersionId:string|null;action:PlanVersion['confirmation']['action'];scheduledDate:string|null;reason:string},context:EngineContext):Promise<PlanVersion>;
+  report(input:{operationId:string;assessment:AssessmentSnapshot;previousReportId:string|null},context:EngineContext):Promise<ReportSnapshot>;
+}
+export interface EngineRegistration { assessment?:AssessmentEnginePort; planning?:PlanningEnginePort }
+export type NativeToolCall = {id:string;name:string;arguments:string};
+/** G0: image/text segments for vision calls. content stays the plain-text form, so text-only callers are unchanged. */
+export type ModelContentPart = {type:'text';text:string}|{type:'image_url';image_url:{url:string}};
+export type ModelMessage = {role:'system'|'user'|'assistant'|'tool';content:string;toolCallId?:string;toolCalls?:NativeToolCall[];
+  /** When present the provider sends these segments instead of content (only providers that declare vision support). */
+  parts?:ModelContentPart[]};
+export type ToolDefinition = {name:string;description:string;parameters:Record<string,unknown>};
+export interface ModelProvider {
+  readonly kind:'real_http'|'synthetic'|'offline';
+  readonly supportsTools:boolean;
+  complete(input:{messages:ModelMessage[];tools:ToolDefinition[];signal:AbortSignal}):Promise<{content:string;toolCalls:NativeToolCall[]}>;
+}
+export type AgentReply = {run:AgentRun;text:string;mode:'model'|'local_rules';disclosure:string};
